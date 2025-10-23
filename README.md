@@ -432,7 +432,6 @@ This project is licensed under the MIT License. See the LICENSE file for more de
 
 - **Issues**: [GitHub Issues](https://github.com/GLOBUS-studio/PhpObfuscator/issues)
 - **Discussions**: [GitHub Discussions](https://github.com/GLOBUS-studio/PhpObfuscator/discussions)
-- **Email**: support@globus-studio.com
 
 ## Changelog
 
@@ -468,5 +467,3 @@ This project is licensed under the MIT License. See the LICENSE file for more de
 ### Version 1.0
 - Initial release
 - Basic variable and string obfuscation
-
-
