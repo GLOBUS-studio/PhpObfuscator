@@ -1,0 +1,142 @@
+#!/usr/bin/env php
+<?php
+
+declare(strict_types=1);
+
+use GLOBUSstudio\PhpObfuscator\Exception\ObfuscationException;
+use GLOBUSstudio\PhpObfuscator\Obfuscator;
+use GLOBUSstudio\PhpObfuscator\Options;
+
+(static function (): void {
+    $autoload = null;
+    foreach ([
+        __DIR__ . '/../vendor/autoload.php',
+        __DIR__ . '/../../../autoload.php',
+    ] as $candidate) {
+        if (file_exists($candidate)) {
+            $autoload = $candidate;
+            break;
+        }
+    }
+    if ($autoload === null) {
+        fwrite(STDERR, "Composer autoloader not found. Run `composer install`.\n");
+        exit(1);
+    }
+    require $autoload;
+})();
+
+$argv = $_SERVER['argv'] ?? [];
+$program = basename(array_shift($argv) ?? 'php-obfuscate');
+
+$usage = <<<USAGE
+Usage: $program [options] <input.php> [output.php]
+
+Reads PHP source from <input.php> (or `-` for STDIN), obfuscates it and writes
+the result to <output.php> (or STDOUT when omitted).
+
+Options:
+  --no-eval-wrap         Do not wrap output in eval(base64_decode(...))
+  --no-strings           Skip string literal Base64 encoding
+  --no-minify            Preserve original whitespace
+  --no-comments          Strip comments only (default removes them)
+  --keep-variables       Do not rename variables
+  --keep-functions       Do not rename functions
+  --keep-classes         Do not rename classes
+  --keep-methods         Do not rename methods
+  --keep-properties      Do not rename properties
+  --keep-constants       Do not rename constants
+  --seed=<int>           Use a deterministic PRNG seed
+  -h, --help             Show this help text
+  -V, --version          Print library version
+USAGE;
+
+$flags = [
+    'wrapWithEval'        => true,
+    'encodeStrings'       => true,
+    'removeWhitespace'    => true,
+    'removeComments'      => true,
+    'obfuscateVariables'  => true,
+    'obfuscateFunctions'  => true,
+    'obfuscateClasses'    => true,
+    'obfuscateMethods'    => true,
+    'obfuscateProperties' => true,
+    'obfuscateConstants'  => true,
+];
+$seed = null;
+$positional = [];
+
+foreach ($argv as $arg) {
+    switch (true) {
+        case $arg === '-h' || $arg === '--help':
+            echo $usage, "\n";
+            exit(0);
+        case $arg === '-V' || $arg === '--version':
+            echo "php-obfuscate 1.0.0\n";
+            exit(0);
+        case $arg === '--no-eval-wrap':
+            $flags['wrapWithEval'] = false; break;
+        case $arg === '--no-strings':
+            $flags['encodeStrings'] = false; break;
+        case $arg === '--no-minify':
+            $flags['removeWhitespace'] = false; break;
+        case $arg === '--no-comments':
+            $flags['removeComments'] = false; break;
+        case $arg === '--keep-variables':
+            $flags['obfuscateVariables'] = false; break;
+        case $arg === '--keep-functions':
+            $flags['obfuscateFunctions'] = false; break;
+        case $arg === '--keep-classes':
+            $flags['obfuscateClasses'] = false; break;
+        case $arg === '--keep-methods':
+            $flags['obfuscateMethods'] = false; break;
+        case $arg === '--keep-properties':
+            $flags['obfuscateProperties'] = false; break;
+        case $arg === '--keep-constants':
+            $flags['obfuscateConstants'] = false; break;
+        case str_starts_with($arg, '--seed='):
+            $seed = (int) substr($arg, 7); break;
+        case str_starts_with($arg, '--'):
+            fwrite(STDERR, "Unknown option: $arg\n\n$usage\n");
+            exit(2);
+        default:
+            $positional[] = $arg;
+    }
+}
+
+if ($positional === []) {
+    fwrite(STDERR, "$usage\n");
+    exit(2);
+}
+
+$input  = $positional[0];
+$output = $positional[1] ?? null;
+
+try {
+    $options = Options::fromArray($flags + ['seed' => $seed]);
+    $obfuscator = new Obfuscator($options);
+
+    if ($input === '-') {
+        $code = stream_get_contents(STDIN);
+        if ($code === false) {
+            throw new ObfuscationException('Failed to read STDIN.');
+        }
+        $result = $obfuscator->obfuscate($code);
+    } else {
+        $result = $obfuscator->obfuscateFile($input);
+    }
+
+    if ($output === null || $output === '-') {
+        echo $result;
+    } else {
+        $dir = dirname($output);
+        if ($dir !== '' && !is_dir($dir) && !@mkdir($dir, 0777, true) && !is_dir($dir)) {
+            throw new ObfuscationException("Failed to create directory: $dir");
+        }
+        if (@file_put_contents($output, $result) === false) {
+            throw new ObfuscationException("Failed to write file: $output");
+        }
+    }
+} catch (Throwable $e) {
+    fwrite(STDERR, $e->getMessage() . "\n");
+    exit(1);
+}

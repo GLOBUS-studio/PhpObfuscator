@@ -1,469 +1,211 @@
-# PHP Obfuscator
+# PhpObfuscator
 
-A comprehensive and powerful PHP code obfuscator that provides multiple layers of obfuscation to protect your source code.
+[![CI](https://github.com/GLOBUS-studio/PhpObfuscator/actions/workflows/ci.yml/badge.svg)](https://github.com/GLOBUS-studio/PhpObfuscator/actions/workflows/ci.yml)
+[![Latest Version](https://img.shields.io/packagist/v/globus-studio/php-obfuscator.svg?label=version)](https://packagist.org/packages/globus-studio/php-obfuscator)
+[![PHP Version](https://img.shields.io/packagist/php-v/globus-studio/php-obfuscator.svg)](https://www.php.net/)
+[![License](https://img.shields.io/github/license/GLOBUS-studio/PhpObfuscator.svg)](LICENSE)
+[![PHPUnit](https://img.shields.io/badge/PHPUnit-passing-brightgreen.svg)](https://phpunit.de/)
+[![Tested on PHP 8.1 - 8.5](https://img.shields.io/badge/PHP-8.1%20%7C%208.2%20%7C%208.3%20%7C%208.4%20%7C%208.5-blue.svg)](.github/workflows/ci.yml)
 
-**✨ Fully compatible with PHP 8.0, 8.1, 8.2, 8.3, and 8.4**
+A token-based PHP source code obfuscator. Renames identifiers, encodes string
+literals and minifies whitespace, all driven by PHP's own tokenizer rather than
+brittle regular expressions, so the transformed code keeps its original
+runtime semantics on every supported PHP version.
+
+The obfuscator is fully tested on PHP 8.1, 8.2, 8.3, 8.4 and 8.5 in CI.
+
+## Why another obfuscator?
+
+Most PHP obfuscators on the open web rely on regular expressions. They break
+on namespaced code, on complex string interpolation, on constructor property
+promotion and on anything that does not fit a simple textual pattern. This
+library walks the official `PhpToken` stream and rewrites identifiers using
+the same lexical context the engine itself uses, which makes the result
+predictable and safe to ship.
 
 ## Features
 
-- **Variable Obfuscation**: Replace variable names with random names
-- **Function Obfuscation**: Obfuscate user-defined function names
-- **Class Obfuscation**: Obfuscate class names and their members
-- **Method & Property Obfuscation**: Rename class methods and properties
-- **Constant Obfuscation**: Obfuscate defined constants
-- **String Encoding**: Encode string literals using Base64
-- **Comment Removal**: Remove all comments from code
-- **Whitespace Removal**: Minify code by removing unnecessary whitespace
-- **Base64 Wrapping**: Wrap entire code in Base64 + eval() for additional layer
-- **Configurable Options**: Fine-tune obfuscation behavior
-- **Collision Prevention**: Smart name generation to avoid conflicts
-- **Error Handling**: Comprehensive exception handling
-- **PHP 8.x Support**: Full support for enums, readonly properties, named arguments, attributes, union/intersection types, and more
-
-## PHP 8.x Compatibility
-
-This obfuscator fully supports all PHP 8.x features:
-
-### PHP 8.0+
-- ✅ Named arguments
-- ✅ Attributes (annotations)
-- ✅ Constructor property promotion
-- ✅ Union types
-- ✅ Match expressions
-- ✅ Nullsafe operator
-- ✅ Arrow functions (short closures)
-
-### PHP 8.1+
-- ✅ Enums
-- ✅ Readonly properties
-- ✅ First-class callable syntax
-- ✅ Intersection types
-- ✅ Never return type
-- ✅ Final class constants
-
-### PHP 8.2+
-- ✅ Readonly classes
-- ✅ Disjunctive Normal Form (DNF) types
-- ✅ True/false standalone types
-- ✅ Constants in traits
-
-### PHP 8.3+
-- ✅ Typed class constants
-- ✅ Dynamic class constant fetch
-- ✅ Override attribute
-
-### PHP 8.4+
-- ✅ Property hooks
-- ✅ Asymmetric visibility
-- ✅ New array functions
+- Token-based identifier rewriting (variables, functions, classes,
+  interfaces, traits, enums, methods, properties, class and global
+  constants).
+- Constructor property promotion, `readonly`, `enum`, `match`, arrow
+  functions, nullsafe operator, named arguments and attributes are all
+  recognised.
+- Optional Base64 encoding of string literals (skipped automatically inside
+  constant expressions where PHP requires literal values).
+- Optional comment stripping and whitespace minification driven by a second
+  tokenizer pass, so the output is guaranteed to remain parseable.
+- Optional `eval(base64_decode(...))` wrapping for an extra layer of
+  protection.
+- Deterministic PRNG seed for reproducible builds.
+- Inspection of the rename table via `getNameMap()`.
+- Bundled `php-obfuscate` CLI binary.
 
 ## Installation
 
-Clone this repository or download the `PhpObfuscator.php` and include it in your project:
+```bash
+composer require globus-studio/php-obfuscator
+```
+
+## Quick start
+
+```php
+<?php
+
+require __DIR__ . '/vendor/autoload.php';
+
+use GLOBUSstudio\PhpObfuscator\Obfuscator;
+use GLOBUSstudio\PhpObfuscator\Options;
+
+$obfuscator = new Obfuscator();
+
+echo $obfuscator->obfuscate(<<<'PHP'
+<?php
+function greet(string $name): string {
+    return "Hello, $name";
+}
+echo greet('Ada');
+PHP);
+```
+
+The output is a self-contained `<?php eval(base64_decode("..."));` payload that
+prints `Hello, Ada` when executed.
+
+## Library API
+
+### `Obfuscator`
+
+```php
+$obfuscator = new Obfuscator(new Options(seed: 42));
+
+$code = $obfuscator->obfuscate('<?php echo 1 + 1;');
+$code = $obfuscator->obfuscateFile(__DIR__ . '/src/in.php');
+$obfuscator->obfuscateFileTo(__DIR__ . '/src/in.php', __DIR__ . '/build/out.php');
+
+$map = $obfuscator->getNameMap();
+// [
+//     'variables'  => ['userName' => 'vAbCdEfG', ...],
+//     'functions'  => [...],
+//     'classes'    => [...],
+//     'methods'    => [...],
+//     'properties' => [...],
+//     'constants'  => [...],
+// ]
+```
+
+### `Options`
+
+`Options` is an immutable value object. All flags default to `true`.
+
+| Option                | Default | Description                                                                       |
+|-----------------------|--------:|-----------------------------------------------------------------------------------|
+| `obfuscateVariables`  |  `true` | Rename local variables (superglobals and `$this` are always preserved).           |
+| `obfuscateFunctions`  |  `true` | Rename user-defined function declarations and their call sites.                   |
+| `obfuscateClasses`    |  `true` | Rename classes, interfaces, traits and enums and every reference to them.        |
+| `obfuscateMethods`    |  `true` | Rename methods (magic methods such as `__construct` are kept untouched).         |
+| `obfuscateProperties` |  `true` | Rename properties, including promoted constructor parameters and static props.   |
+| `obfuscateConstants`  |  `true` | Rename `const`, class constants, enum cases and `define()` constants.            |
+| `encodeStrings`       |  `true` | Replace string literals with `base64_decode('...')` calls.                       |
+| `removeComments`      |  `true` | Strip `//`, `#` and `/* ... */` comments.                                        |
+| `removeWhitespace`    |  `true` | Minify whitespace.                                                                |
+| `wrapWithEval`        |  `true` | Wrap the final payload in `<?php eval(base64_decode('...'));`.                   |
+| `minNameLength`       |     `6` | Minimum length of generated identifiers.                                          |
+| `maxNameLength`       |    `12` | Maximum length of generated identifiers.                                          |
+| `seed`                |  `null` | Optional PRNG seed for deterministic, reproducible output.                        |
+
+```php
+use GLOBUSstudio\PhpObfuscator\Options;
+
+$options = new Options(
+    encodeStrings: false,
+    wrapWithEval: false,
+    seed: 12345,
+);
+
+$options = Options::fromArray(['wrapWithEval' => false]);
+$options = $options->with(['seed' => 7]);
+```
+
+### Selective obfuscation
+
+```php
+use GLOBUSstudio\PhpObfuscator\Obfuscator;
+use GLOBUSstudio\PhpObfuscator\Options;
+
+// Public API stays callable from the outside while the internals are scrambled.
+$opts = new Options(
+    obfuscateClasses:  false,
+    obfuscateMethods:  false,
+    obfuscateFunctions: false,
+);
+
+echo (new Obfuscator($opts))->obfuscate(file_get_contents('Library.php'));
+```
+
+## CLI
+
+```text
+Usage: php-obfuscate [options] <input.php> [output.php]
+
+Reads PHP source from <input.php> (or `-` for STDIN), obfuscates it and writes
+the result to <output.php> (or STDOUT when omitted).
+
+Options:
+  --no-eval-wrap         Do not wrap output in eval(base64_decode(...))
+  --no-strings           Skip string literal Base64 encoding
+  --no-minify            Preserve original whitespace
+  --no-comments          Strip comments only (default removes them)
+  --keep-variables       Do not rename variables
+  --keep-functions       Do not rename functions
+  --keep-classes         Do not rename classes
+  --keep-methods         Do not rename methods
+  --keep-properties      Do not rename properties
+  --keep-constants       Do not rename constants
+  --seed=<int>           Use a deterministic PRNG seed
+  -h, --help             Show this help text
+  -V, --version          Print library version
+```
+
+Examples:
 
 ```bash
-git clone https://github.com/GLOBUS-studio/PhpObfuscator.git
+vendor/bin/php-obfuscate src/Acme/Service.php build/Service.php
+cat src/Acme/Service.php | vendor/bin/php-obfuscate - > build/Service.php
+vendor/bin/php-obfuscate --keep-classes --seed=1 src/Service.php
 ```
 
-Or download directly:
+## What is preserved by design
 
-```bash
-wget https://raw.githubusercontent.com/GLOBUS-studio/PhpObfuscator/main/PhpObfuscator.php
-```
-
-## Usage
-
-### Quick Start
-
-```php
-<?php
-require_once 'PhpObfuscator.php';
-
-$obfuscator = new PhpObfuscator();
-$obfuscated = $obfuscator->obfuscate('path/to/your/file.php', true);
-$obfuscator->saveToFile($obfuscated, 'path/to/output.php');
-```
-
-### PHP 8.x Examples
-
-```php
-<?php
-require_once 'PhpObfuscator.php';
-
-// Example with PHP 8.x features
-$code = '
-<?php
-enum Status: string {
-    case PENDING = "pending";
-    case APPROVED = "approved";
-    case REJECTED = "rejected";
-}
-
-readonly class User {
-    public function __construct(
-        private string $name,
-        private string $email,
-        private Status $status = Status::PENDING
-    ) {}
-    
-    public function getInfo(): string {
-        return match($this->status) {
-            Status::PENDING => "User {$this->name} is pending",
-            Status::APPROVED => "User {$this->name} is approved",
-            Status::REJECTED => "User {$this->name} is rejected",
-        };
-    }
-}
-
-$user = new User("John Doe", "john@example.com");
-echo $user->getInfo();
-';
-
-$obfuscator = new PhpObfuscator();
-$obfuscated = $obfuscator->obfuscate($code);
-```
-
-### Basic Usage
-
-```php
-<?php
-require_once 'PhpObfuscator.php';
-
-$obfuscator = new PhpObfuscator();
-$code = '
-<?php
-$username = "admin";
-$password = "secret123";
-
-function authenticate($user, $pass) {
-    global $username, $password;
-    return $user === $username && $pass === $password;
-}
-
-class User {
-    private $name;
-    
-    public function __construct($name) {
-        $this->name = $name;
-    }
-    
-    public function getName() {
-        return $this->name;
-    }
-}
-
-$result = authenticate("admin", "secret123");
-$user = new User("John");
-echo $user->getName();
-';
-
-$obfuscatedCode = $obfuscator->obfuscate($code);
-echo $obfuscatedCode;
-```
-
-### Advanced Usage with Options
-
-```php
-<?php
-$options = [
-    'obfuscateVariables' => true,
-    'obfuscateFunctions' => true,
-    'obfuscateClasses' => true,
-    'obfuscateMethods' => true,
-    'obfuscateProperties' => true,
-    'obfuscateConstants' => true,
-    'encodeStrings' => true,
-    'removeComments' => true,
-    'removeWhitespace' => true,
-    'wrapWithEval' => true,
-];
-
-$obfuscator = new PhpObfuscator($options);
-
-// Obfuscate from string
-$obfuscatedCode = $obfuscator->obfuscate($code);
-
-// Or obfuscate from file
-$obfuscatedCode = $obfuscator->obfuscate('input.php', true);
-
-// Save to file
-$obfuscator->saveToFile($obfuscatedCode, 'output.php');
-```
-
-### Selective Obfuscation
-
-```php
-<?php
-// Only obfuscate variables and strings, keep everything else readable
-$obfuscator = new PhpObfuscator([
-    'obfuscateVariables' => true,
-    'obfuscateFunctions' => false,
-    'obfuscateClasses' => false,
-    'encodeStrings' => true,
-    'wrapWithEval' => false,
-]);
-```
-
-### Get Name Mapping (for debugging)
-
-```php
-<?php
-$obfuscator = new PhpObfuscator();
-$obfuscatedCode = $obfuscator->obfuscate($code);
-
-// Get the mapping of original to obfuscated names
-$nameMap = $obfuscator->getNameMap();
-print_r($nameMap);
-```
-
-## Configuration Options
-
-| Option | Type | Default | Description |
-|--------|------|---------|-------------|
-| `obfuscateVariables` | bool | `true` | Obfuscate variable names |
-| `obfuscateFunctions` | bool | `true` | Obfuscate function names |
-| `obfuscateClasses` | bool | `true` | Obfuscate class names |
-| `obfuscateMethods` | bool | `true` | Obfuscate method names |
-| `obfuscateProperties` | bool | `true` | Obfuscate property names |
-| `obfuscateConstants` | bool | `true` | Obfuscate constant names |
-| `encodeStrings` | bool | `true` | Encode string literals with Base64 |
-| `removeComments` | bool | `true` | Remove all comments |
-| `removeWhitespace` | bool | `true` | Remove unnecessary whitespace |
-| `wrapWithEval` | bool | `true` | Wrap code with Base64 + eval() |
-| `preserveLineNumbers` | bool | `false` | Preserve original line numbers (future feature) |
-
-## Protected Names
-
-The obfuscator automatically protects:
-- **PHP reserved keywords** (including all PHP 8.x keywords: `enum`, `readonly`, `match`, `never`, `from`, etc.)
-- **Magic methods** (`__construct`, `__destruct`, `__serialize`, `__unserialize`, etc.)
-- **Superglobals** (`$_GET`, `$_POST`, `$_SERVER`, etc.)
-- **Built-in classes** (`stdClass`, `Exception`, `DateTime`, `PDO`, `Closure`, etc.)
-- **Magic constants** (`__CLASS__`, `__DIR__`, `__FILE__`, `__FUNCTION__`, etc.)
-
-## Examples
-
-### PHP 8.1+ Enum Example
-
-```php
-<?php
-enum Color {
-    case Red;
-    case Green;
-    case Blue;
-    
-    public function label(): string {
-        return match($this) {
-            Color::Red => 'Red Color',
-            Color::Green => 'Green Color',
-            Color::Blue => 'Blue Color',
-        };
-    }
-}
-```
-
-After obfuscation, the enum structure is preserved while names are obfuscated.
-
-### PHP 8.0+ Constructor Property Promotion
-
-```php
-<?php
-class Product {
-    public function __construct(
-        private string $name,
-        private float $price,
-        private readonly int $id
-    ) {}
-}
-```
-
-The obfuscator correctly handles promoted properties.
-
-## Security Notes
-
-⚠️ **Important Security Considerations:**
-
-- This obfuscator provides **protection against casual inspection**, not cryptographic security
-- **Obfuscation is NOT encryption** - determined attackers can reverse it with tools
-- **Always keep backups** of your original source code
-- **Test thoroughly** after obfuscation to ensure functionality
-- **Do not rely solely on obfuscation** for protecting sensitive data
-- Use proper security measures like:
-  - Server-side validation and sanitization
-  - Encryption for sensitive data (passwords, API keys, etc.)
-  - Secure authentication and authorization mechanisms
-  - Regular security audits and penetration testing
-  - Keep PHP and dependencies updated
-
-## Best Practices
-
-1. **Always backup original code** before obfuscation
-2. **Test obfuscated code** in a staging environment first
-3. **Version control** your original code (never commit obfuscated code to VCS)
-4. **Use selective obfuscation** for better performance and debugging
-5. **Combine with other security measures** (encryption, access control, etc.)
-6. **Document your obfuscation strategy** for your team
-7. **Monitor obfuscated code** for any runtime errors
-8. **Keep obfuscated files separate** from source files
+- `$this` and every PHP superglobal (`$_SERVER`, `$_GET`, ...).
+- Magic methods (`__construct`, `__toString`, `__invoke`, ...).
+- Built-in PHP functions, classes, traits and interfaces. The obfuscator only
+  renames identifiers it has previously seen *declared* in the input, so
+  references to anything from the standard library or third-party packages
+  remain untouched.
+- String literals appearing in constant-expression positions (class
+  constants, enum case values, default parameter values, top-level `const`
+  initializers) are never wrapped in `base64_decode(...)`, because PHP
+  requires those positions to be literal expressions.
 
 ## Limitations
 
-- May not work correctly with:
-  - Code using variable variables (e.g., `$$varname`)
-  - Dynamic function/method calls (`call_user_func`, etc.)
-  - Reflection API intensive code
-  - Code that reads its own source (`__FILE__`, `get_defined_functions()`, etc.)
-  - Heredoc/Nowdoc strings (limited support)
-  - Complex namespace aliases
-- Performance overhead due to Base64 decoding when `wrapWithEval` is enabled
-- Slightly increased file size
-- Debugging obfuscated code is extremely difficult
+- Namespaced symbol names that appear as `T_NAME_QUALIFIED` or
+  `T_NAME_FULLY_QUALIFIED` tokens are not rewritten. If you need to obfuscate
+  namespaced classes, the obfuscator must be applied to a single-namespace
+  file at a time.
+- The obfuscator works at the source level. It is a deterrent that raises
+  the cost of casual reverse engineering, not a cryptographic protection.
+  Anyone able to run your code can trivially recover the runtime behaviour.
 
-## Advanced Features
-
-### Custom Obfuscation Patterns
-
-```php
-<?php
-// Obfuscate everything except specific classes
-$obfuscator = new PhpObfuscator([
-    'obfuscateClasses' => true,
-    'wrapWithEval' => false,
-]);
-
-// You can manually exclude classes by pre-processing
-$code = str_replace('class MyImportantClass', '/*KEEP*/class MyImportantClass', $code);
-$obfuscated = $obfuscator->obfuscate($code);
-$obfuscated = str_replace('/*KEEP*/', '', $obfuscated);
-```
-
-### Performance Optimization
-
-For better performance, disable features you don't need:
-
-```php
-<?php
-$obfuscator = new PhpObfuscator([
-    'encodeStrings' => false,      // Faster execution
-    'removeWhitespace' => false,   // Better debugging
-    'wrapWithEval' => false,       // No eval() overhead
-]);
-```
-
-## Troubleshooting
-
-**Code not working after obfuscation?**
-- Disable `wrapWithEval` option and check for syntax errors
-- Try selective obfuscation (disable specific options one by one)
-- Check for dynamic code patterns (variable variables, `eval()`, etc.)
-- Verify that you're not using Reflection API
-- Check error logs for specific issues
-
-**Fatal errors after obfuscation?**
-- Ensure you're not using reserved PHP keywords as identifiers
-- Check for variable variables or dynamic function calls
-- Look for namespace conflicts
-- Verify class autoloading still works
-
-**Strings not encoded correctly?**
-- URLs and file paths are automatically excluded from encoding
-- Check for escaped quotes in strings
-- Try disabling `encodeStrings` for debugging
-
-**Performance issues?**
-- Disable `wrapWithEval` (biggest performance impact)
-- Consider selective obfuscation
-- Cache obfuscated files (don't obfuscate on every request)
-
-## Examples Repository
-
-Check out the `example.php` file for comprehensive examples:
+## Development
 
 ```bash
-php example.php
+composer install
+vendor/bin/phpunit
 ```
 
-This will demonstrate:
-- Basic obfuscation
-- PHP 8.x features support
-- Selective obfuscation
-- Name mapping
-- File obfuscation
-- Maximum obfuscation
-- Testing obfuscated code
-
-## Requirements
-
-- **PHP 8.0 or higher** (recommended: PHP 8.2+)
-- **Tokenizer extension** (usually enabled by default)
-- No other external dependencies
-- Works with all PHP 8.x versions (8.0, 8.1, 8.2, 8.3, 8.4)
-
-## Known Limitations with PHP 8.x
-
-- **Attributes**: Attribute class names are preserved to maintain functionality
-- **Enums**: Enum names and case names may need to be preserved for external APIs
-- **Named Arguments**: Will not work correctly after parameter obfuscation
-- **Reflection**: Code using `ReflectionClass`, `ReflectionMethod`, etc. will break
-- **Fibers**: Not tested with PHP 8.1+ Fibers
-- **Property Hooks** (PHP 8.4): Limited support, may need manual adjustment
-
-## Contributing
-
-Contributions are welcome! Please:
-
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
-
-Please ensure your code:
-- Follows PSR-12 coding standards
-- Includes PHPDoc comments
-- Has test cases for new features
-- Doesn't break existing functionality
+The bundled CI workflow runs the test suite on Ubuntu against PHP 8.1 - 8.5.
 
 ## License
 
-This project is licensed under the MIT License. See the LICENSE file for more details.
-
-## Support
-
-- **Issues**: [GitHub Issues](https://github.com/GLOBUS-studio/PhpObfuscator/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/GLOBUS-studio/PhpObfuscator/discussions)
-
-## Changelog
-
-### Version 2.2 (Current)
-- 🐛 Fixed duplicate entries in `$magicNames`
-- 🐛 Fixed `yield from` in reserved words (split into `yield` and `from`)
-- 🐛 Fixed `readonly` modifier incorrectly applied to methods
-- ✨ Improved string encoding with escape handling
-- ✨ Better comment removal using PHP tokenizer
-- ✨ Enhanced constant obfuscation to avoid over-replacement
-- ✨ Added built-in PHP classes to protected names
-- ✨ Improved regex patterns for better accuracy
-- ✨ Added comprehensive `example.php` with 7 use cases
-- 📝 Updated documentation with troubleshooting and best practices
-- 🔒 Better handling of URLs and file paths in strings
-
-### Version 2.1
-- Full compatibility with PHP 8.0-8.4
-- Support for enums, readonly properties, match expressions
-- Complete list of PHP 8.x reserved words
-- Improved handling of typed properties and promoted constructors
-- Better support for union and intersection types
-- Protection of magic methods including `__serialize` and `__unserialize`
-
-### Version 2.0
-- Added comprehensive obfuscation for functions, classes, methods, properties, and constants
-- Improved string encoding
-- Added configuration options
-- Enhanced error handling
-- Better collision prevention
-- Support for superglobals and magic methods
-
-### Version 1.0
-- Initial release
-- Basic variable and string obfuscation
+[MIT](LICENSE).

@@ -1,0 +1,10 @@
+/vendor/
+/build/
+/.phpunit.cache/
+/.phpunit.result.cache
+composer.lock
+.idea/
+.vscode/
+*.log
+clover.xml
+cov.txt
