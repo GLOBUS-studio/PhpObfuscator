@@ -1,11 +1,10 @@
 # PhpObfuscator
 
-[![CI](https://github.com/GLOBUS-studio/PhpObfuscator/actions/workflows/ci.yml/badge.svg)](https://github.com/GLOBUS-studio/PhpObfuscator/actions/workflows/ci.yml)
-[![Latest Version](https://img.shields.io/packagist/v/globus-studio/php-obfuscator.svg?label=version)](https://packagist.org/packages/globus-studio/php-obfuscator)
-[![PHP Version](https://img.shields.io/packagist/php-v/globus-studio/php-obfuscator.svg)](https://www.php.net/)
-[![License](https://img.shields.io/github/license/GLOBUS-studio/PhpObfuscator.svg)](LICENSE)
-[![PHPUnit](https://img.shields.io/badge/PHPUnit-passing-brightgreen.svg)](https://phpunit.de/)
-[![Tested on PHP 8.1 - 8.5](https://img.shields.io/badge/PHP-8.1%20%7C%208.2%20%7C%208.3%20%7C%208.4%20%7C%208.5-blue.svg)](.github/workflows/ci.yml)
+[![CI](https://github.com/GLOBUS-studio/PhpObfuscator/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/GLOBUS-studio/PhpObfuscator/actions/workflows/ci.yml)
+[![Latest Release](https://img.shields.io/github/v/release/GLOBUS-studio/PhpObfuscator?include_prereleases&sort=semver)](https://github.com/GLOBUS-studio/PhpObfuscator/releases)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Tested on PHP 8.1 - 8.5](https://img.shields.io/badge/PHP-8.1%20%7C%208.2%20%7C%208.3%20%7C%208.4%20%7C%208.5-777BB4?logo=php&logoColor=white)](.github/workflows/ci.yml)
+[![PHPUnit](https://img.shields.io/badge/tested%20with-PHPUnit-brightgreen.svg)](https://phpunit.de/)
 
 A token-based PHP source code obfuscator. Renames identifiers, encodes string
 literals and minifies whitespace, all driven by PHP's own tokenizer rather than
