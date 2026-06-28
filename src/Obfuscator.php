@@ -163,7 +163,7 @@ final class Obfuscator
             $output = $leadingHtml . '<?php eval(base64_decode("' . base64_encode($body) . '"));';
         }
 
-        if ($injectedTag) {
+        if ($injectedTag && !$this->options->wrapWithEval) {
             $output = preg_replace('/^\s*<\?(php\s*|=\s*)?/', '', $output, 1) ?? $output;
         }
 
@@ -441,6 +441,12 @@ final class Obfuscator
 
             if ($t->id === T_VARIABLE) {
                 $name = ltrim($t->text, '$');
+
+                // Variable-variable marker `$` in `$$var` has an empty name
+                // and must never be renamed.
+                if ($name === '') {
+                    continue;
+                }
 
                 // `Foo::$bar` and `$obj::$bar` are static property accesses
                 // and must use the property map, not the variable map.
@@ -940,13 +946,33 @@ final class Obfuscator
      */
     private function isPromotedProperty(array $tokens, int $i): bool
     {
+        $parenDepth = 0;
+
         for ($j = $i - 1; $j >= 0; $j--) {
             $t = $tokens[$j];
+
             if ($t->id === T_PUBLIC || $t->id === T_PRIVATE || $t->id === T_PROTECTED || $t->id === T_READONLY) {
-                return true;
+                if ($parenDepth === 0) {
+                    return true;
+                }
+                continue;
             }
-            if ($t->id === ord('(') || $t->id === ord(',')) {
+
+            if ($t->id === ord('(')) {
+                if ($parenDepth > 0) {
+                    $parenDepth--;
+                    continue;
+                }
                 return false;
+            }
+            if ($t->id === ord(')')) {
+                $parenDepth++;
+                continue;
+            }
+            if ($t->id === ord(',')) {
+                if ($parenDepth === 0) {
+                    return false;
+                }
             }
         }
         return false;
