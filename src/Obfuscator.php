@@ -37,6 +37,7 @@ final class Obfuscator
         'argc' => true,
         'argv' => true,
         'php_errormsg' => true,
+        'value' => true, // implicit $value in PHP 8.4+ property set-hooks
     ];
 
     /**
@@ -113,17 +114,20 @@ final class Obfuscator
             return '';
         }
 
-        $hadOpenTag = (bool) preg_match('/<\?(php|=)?/', $code);
-        $sourceForTokens = $hadOpenTag ? $code : "<?php\n" . $code;
-
         try {
-            $tokens = PhpToken::tokenize($sourceForTokens, TOKEN_PARSE);
+            $tokens = PhpToken::tokenize("<?php\n" . $code, TOKEN_PARSE);
+            $injectedTag = true;
         } catch (\ParseError $e) {
-            throw new ObfuscationException(
-                'Failed to parse PHP code: ' . $e->getMessage(),
-                0,
-                $e,
-            );
+            try {
+                $tokens = PhpToken::tokenize($code, TOKEN_PARSE);
+                $injectedTag = false;
+            } catch (\ParseError $e2) {
+                throw new ObfuscationException(
+                    'Failed to parse PHP code: ' . $e2->getMessage(),
+                    0,
+                    $e2,
+                );
+            }
         }
 
         // Reset the symbol table for every call so the obfuscator instance is
@@ -143,12 +147,23 @@ final class Obfuscator
         }
 
         if ($this->options->wrapWithEval) {
+            // Preserve leading inline HTML outside the eval wrapper so that
+            // mixed HTML/PHP templates keep outputting their leading text.
+            $leadingHtml = '';
+            if (preg_match('/^(.*?)<\?/', $output, $m)) {
+                $leadingHtml = $m[1];
+                $output = substr($output, strlen($leadingHtml));
+            }
+            $isEchoTag = (bool) preg_match('/^\s*<\?=/', $output);
             $body = preg_replace('/^\s*<\?(php\s*|=\s*)?/', '', $output, 1) ?? $output;
             $body = preg_replace('/\?>\s*$/', '', $body) ?? $body;
-            $output = '<?php eval(base64_decode("' . base64_encode($body) . '"));';
+            if ($isEchoTag) {
+                $body = 'echo ' . $body;
+            }
+            $output = $leadingHtml . '<?php eval(base64_decode("' . base64_encode($body) . '"));';
         }
 
-        if (!$hadOpenTag) {
+        if ($injectedTag) {
             $output = preg_replace('/^\s*<\?(php\s*|=\s*)?/', '', $output, 1) ?? $output;
         }
 
@@ -227,7 +242,7 @@ final class Obfuscator
                 continue;
             }
 
-            if ($id === ord('{') || $id === ord('(') || $id === ord('[')) {
+            if ($id === ord('{') || $id === ord('(') || $id === ord('[') || $id === T_ATTRIBUTE) {
                 $stack[] = $i;
                 continue;
             }
@@ -258,10 +273,18 @@ final class Obfuscator
         $count = count($tokens);
 
         foreach ($tokens as $i => $t) {
-            if ($t->id === T_CLASS || $t->id === T_INTERFACE || $t->id === T_TRAIT || $t->id === T_ENUM) {
+            if ($t->id === T_CLASS || $t->id === T_INTERFACE || $t->id === T_TRAIT) {
                 $brace = $this->findNextRealBrace($tokens, $i + 1);
                 if ($brace !== null) {
                     $roles[$brace] = 'class';
+                }
+                continue;
+            }
+
+            if ($t->id === T_ENUM) {
+                $brace = $this->findNextRealBrace($tokens, $i + 1);
+                if ($brace !== null) {
+                    $roles[$brace] = 'enum';
                 }
                 continue;
             }
@@ -308,8 +331,10 @@ final class Obfuscator
         $parenStack   = [];
         $parenDepth   = 0;
         $interpDepth  = 0;
+        $attrDepth    = 0;
         $nextParenIsFuncParams = false;
         $globalConstExpr       = false;
+        $pendingConstName      = false;
         $count        = count($tokens);
 
         for ($i = 0; $i < $count; $i++) {
@@ -346,12 +371,32 @@ final class Obfuscator
                 array_pop($parenStack);
                 continue;
             }
+            if ($t->id === T_ATTRIBUTE) {
+                $attrDepth++;
+                continue;
+            }
+            if ($t->id === ord(']')) {
+                if (isset($pairs[$i]) && $tokens[$pairs[$i]]->id === T_ATTRIBUTE) {
+                    if ($attrDepth > 0) {
+                        $attrDepth--;
+                    }
+                }
+                continue;
+            }
+            if ($t->id === ord(',')) {
+                // Multi-declarator const: const A = 1, B = 2;
+                if ($globalConstExpr) {
+                    $pendingConstName = true;
+                }
+            }
             if ($t->id === ord(';')) {
                 $globalConstExpr = false;
+                $pendingConstName = false;
                 continue;
             }
 
-            $inClassBody = $contextStack !== [] && end($contextStack) === 'class';
+            $inClassBody = $contextStack !== [] && in_array(end($contextStack), ['class', 'enum'], true);
+            $inEnumBody  = $contextStack !== [] && end($contextStack) === 'enum';
 
             // Mark constant string literals appearing in constant-expression
             // contexts so the rewriter does not replace them with a runtime
@@ -364,6 +409,8 @@ final class Obfuscator
                     $noEncode = true;
                 } elseif ($globalConstExpr) {
                     $noEncode = true;
+                } elseif ($attrDepth > 0) {
+                    $noEncode = true;
                 }
                 if ($noEncode) {
                     $annotations[$i] = ($annotations[$i] ?? []) + ['kind' => 'literal_no_encode', 'name' => ''];
@@ -373,18 +420,27 @@ final class Obfuscator
             }
 
             if ($t->id === T_FUNCTION || $t->id === T_FN) {
+                // 'use function foo;' import — not a declaration.
+                if ($t->id === T_FUNCTION) {
+                    $prevIdx = $this->prevSignificant($tokens, $i);
+                    if ($prevIdx !== null && $tokens[$prevIdx]->id === T_USE) {
+                        continue;
+                    }
+                }
                 $nextParenIsFuncParams = true;
             }
 
             if ($t->id === T_CONST) {
-                $globalConstExpr = true;
+                // 'use const FOO;' import — not a declaration.
+                $prevIdx = $this->prevSignificant($tokens, $i);
+                if ($prevIdx === null || $tokens[$prevIdx]->id !== T_USE) {
+                    $globalConstExpr = true;
+                    $pendingConstName = true;
+                }
             }
 
             if ($t->id === T_VARIABLE) {
                 $name = ltrim($t->text, '$');
-                if (isset(self::RESERVED_VARIABLES[$name])) {
-                    continue;
-                }
 
                 // `Foo::$bar` and `$obj::$bar` are static property accesses
                 // and must use the property map, not the variable map.
@@ -407,10 +463,17 @@ final class Obfuscator
                 if ($isProperty) {
                     $this->symbols->declare(SymbolTable::KIND_PROPERTY, $name);
                     $annotations[$i] = ['kind' => SymbolTable::KIND_PROPERTY, 'name' => $name];
-                } else {
-                    $this->symbols->declare(SymbolTable::KIND_VARIABLE, $name);
-                    $annotations[$i] = ['kind' => SymbolTable::KIND_VARIABLE, 'name' => $name];
+                    continue;
                 }
+
+                // Plain variable — skip reserved names ($this, superglobals,
+                // implicit $value in property hooks, etc.).
+                if (isset(self::RESERVED_VARIABLES[$name])) {
+                    continue;
+                }
+
+                $this->symbols->declare(SymbolTable::KIND_VARIABLE, $name);
+                $annotations[$i] = ['kind' => SymbolTable::KIND_VARIABLE, 'name' => $name];
                 continue;
             }
 
@@ -460,10 +523,30 @@ final class Obfuscator
                     continue;
                 }
 
-                // `const NAME =` and `case NAME` (enum)
-                if ($prev !== null && ($prev->id === T_CONST || $prev->id === T_CASE)) {
+                // `case NAME` — enum case only, not switch label
+                if ($prev !== null && $prev->id === T_CASE) {
+                    if (!$inEnumBody) {
+                        continue;
+                    }
                     $this->symbols->declare(SymbolTable::KIND_CONSTANT, $t->text);
                     $annotations[$i] = ['kind' => SymbolTable::KIND_CONSTANT, 'name' => $t->text];
+                    continue;
+                }
+
+                // `const NAME` — must skip any type keywords between `const`
+                // and the actual name (e.g. `const int FOO = 1`).
+                if ($pendingConstName) {
+                    $peekIdx = $this->nextSignificant($tokens, $i);
+                    if ($peekIdx !== null) {
+                        $peek = $tokens[$peekIdx];
+                        if ($peek->id === ord('=') || $peek->id === ord(';')) {
+                            $this->symbols->declare(SymbolTable::KIND_CONSTANT, $t->text);
+                            $annotations[$i] = ['kind' => SymbolTable::KIND_CONSTANT, 'name' => $t->text];
+                            $pendingConstName = false;
+                            continue;
+                        }
+                    }
+                    // Type keyword (int, string, etc.) or other non-name token — skip.
                     continue;
                 }
 
@@ -545,6 +628,7 @@ final class Obfuscator
         $count       = count($tokens);
         $output      = '';
         $interpDepth = 0;
+        $insideString = false;
 
         for ($i = 0; $i < $count; $i++) {
             $t = $tokens[$i];
@@ -555,6 +639,11 @@ final class Obfuscator
                 $interpDepth--;
                 $output .= '}';
                 continue;
+            } elseif ($t->id === ord('"') && $interpDepth === 0) {
+                // Toggle string context for bare double-quote delimiters that
+                // appear around interpolated strings (non-interpolated strings
+                // are T_CONSTANT_ENCAPSED_STRING, not bare `"` tokens).
+                $insideString = !$insideString;
             }
 
             // Property and variable tokens
@@ -588,7 +677,12 @@ final class Obfuscator
                 }
 
                 // Bare T_STRING with no annotation: could be a function call,
-                // class reference or constant reference.
+                // class reference or constant reference. Inside string
+                // interpolation it is always a literal key.
+                if ($insideString) {
+                    $output .= $t->text;
+                    continue;
+                }
                 $output .= $this->renameBareString($tokens, $i, $t->text);
                 continue;
             }
@@ -752,6 +846,11 @@ final class Obfuscator
                         && $this->startsWithWordChar($t->text)
                     ) {
                         $output .= ' ';
+                    } elseif (
+                        ($prevSignificant->text === '-' && str_starts_with($t->text, '-'))
+                        || ($prevSignificant->text === '+' && str_starts_with($t->text, '+'))
+                    ) {
+                        $output .= ' ';
                     }
                 }
             } elseif ($hasPendingWhitespace && $prevSignificant !== null) {
@@ -875,8 +974,87 @@ final class Obfuscator
             return strtr($inner, ["\\'" => "'", '\\\\' => '\\']);
         }
 
-        // Use eval-free decoding for double-quoted literals.
-        return stripcslashes($inner);
+        // Decode PHP double-quote escape sequences with correct semantics.
+        return $this->decodeDoubleQuoted($inner);
+    }
+
+    /**
+     * Decode PHP double-quoted string escape sequences, precisely matching
+     * runtime semantics.  Built-in `stripcslashes()` diverges on \a, \b, \e,
+     * \', \u{xxxx} and any unrecognised escape — all of which PHP keeps literal
+     * (except \e and \u which have special PHP-only meaning).
+     */
+    private function decodeDoubleQuoted(string $s): string
+    {
+        $result = '';
+        $len = strlen($s);
+        $i = 0;
+
+        while ($i < $len) {
+            $c = $s[$i];
+            if ($c !== '\\' || $i + 1 >= $len) {
+                $result .= $c;
+                $i++;
+                continue;
+            }
+            $ec = $s[++$i];
+
+            switch ($ec) {
+                case 'n': $result .= "\n"; $i++; break;
+                case 'r': $result .= "\r"; $i++; break;
+                case 't': $result .= "\t"; $i++; break;
+                case 'v': $result .= "\v"; $i++; break;
+                case 'e': $result .= "\e"; $i++; break;
+                case 'f': $result .= "\f"; $i++; break;
+                case '\\': $result .= '\\'; $i++; break;
+                case '$': $result .= '$'; $i++; break;
+                case '"': $result .= '"'; $i++; break;
+                case 'x':
+                    $hex = substr($s, $i + 1, 2);
+                    if (preg_match('/^[0-9A-Fa-f]{1,2}$/', $hex)) {
+                        $result .= chr((int) hexdec($hex));
+                        $i += 1 + strlen($hex);
+                    } else {
+                        $result .= '\\x';
+                        $i++;
+                    }
+                    break;
+                case 'u':
+                    if ($i + 1 < $len && $s[$i + 1] === '{') {
+                        $close = strpos($s, '}', $i + 2);
+                        if ($close !== false) {
+                            $hex = substr($s, $i + 2, $close - $i - 2);
+                            if ($hex !== '' && preg_match('/^[0-9A-Fa-f]+$/', $hex)) {
+                                $cp = (int) hexdec($hex);
+                                $result .= mb_chr($cp, 'UTF-8');
+                                $i = $close + 1;
+                                break;
+                            }
+                        }
+                    }
+                    $result .= '\\u';
+                    $i++;
+                    break;
+                default:
+                    if ($ec >= '0' && $ec <= '7') {
+                        $oct = $ec;
+                        for ($j = $i + 1; $j < $len && $j < $i + 3; $j++) {
+                            $d = $s[$j];
+                            if ($d >= '0' && $d <= '7') {
+                                $oct .= $d;
+                            } else {
+                                break;
+                            }
+                        }
+                        $result .= chr((int) octdec($oct));
+                        $i += strlen($oct);
+                    } else {
+                        $result .= '\\' . $ec;
+                        $i++;
+                    }
+            }
+        }
+        return $result;
     }
 
     private function endsWithWordChar(string $s): bool

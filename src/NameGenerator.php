@@ -81,12 +81,12 @@ final class NameGenerator
     }
 
     /**
-     * Pick a uniformly distributed integer in the inclusive range [$min, $max].
+     * Pick an integer in the inclusive range [$min, $max].
      *
      * Without a seed the method delegates to `random_int()`, which is
-     * cryptographically secure and available on every supported PHP version.
-     * With a seed it advances a small linear congruential generator so that
-     * the output is bit-for-bit reproducible across PHP 8.1 - 8.5.
+     * cryptographically secure. With a seed it advances a linear
+     * congruential generator so that the output is reproducible across
+     * PHP 8.1 - 8.5 (minor modulo bias may occur on the last bucket).
      */
     private function nextInt(int $min, int $max): int
     {

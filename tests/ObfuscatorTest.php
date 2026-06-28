@@ -280,6 +280,75 @@ final class ObfuscatorTest extends TestCase
                 PHP,
                 'limited',
             ],
+
+            'attributes with string arguments are not broken' => [
+                <<<'PHP'
+                <?php
+                #[Attribute]
+                class DemoAttr {
+                    public function __construct(public string $path) {}
+                }
+                #[DemoAttr('/api/users/list')]
+                function test(): string { return 'ok'; }
+                echo test();
+                PHP,
+                'ok',
+            ],
+
+            'switch case with constants is not corrupted' => [
+                <<<'PHP'
+                <?php
+                function pick(string $s): string {
+                    switch ($s) {
+                        case PHP_EOL: return 'eol';
+                        default: return 'ok';
+                    }
+                }
+                echo pick('test') . '/' . pick(PHP_EOL);
+                PHP,
+                'ok/eol',
+            ],
+
+            'typed class constants are handled correctly' => [
+                <<<'PHP'
+                <?php
+                class Config {
+                    const int MAX = 7;
+                    const string NAME = 'test';
+                    public static function name(): string { return self::NAME; }
+                }
+                echo Config::MAX . ':' . Config::name();
+                PHP,
+                '7:test',
+            ],
+
+            'adjacent minus and plus operators do not fuse' => [
+                <<<'PHP'
+                <?php
+                $a = 5;
+                $b = 3;
+                echo $a - -$b . '/' . - -$b;
+                PHP,
+                '8/3',
+            ],
+
+            'double-quoted escape sequences are preserved' => [
+                <<<'PHP'
+                <?php
+                echo "uni:\u{0041}end";
+                PHP,
+                'uni:Aend',
+            ],
+
+            'string interpolation array keys are not renamed' => [
+                <<<'PHP'
+                <?php
+                define('fancyKey', 'unused');
+                $arr = ['fancyKey' => 'value'];
+                echo "got=$arr[fancyKey]";
+                PHP,
+                'got=value',
+            ],
         ];
     }
 
@@ -612,6 +681,31 @@ final class ObfuscatorTest extends TestCase
         $options = new Options(encodeStrings: false, wrapWithEval: false, seed: 1);
         $output = (new Obfuscator($options))->obfuscate($code);
         $this->assertSame('Hi Ada!', PhpRunner::run($output));
+    }
+
+    public function testShortEchoTagPreservesOutput(): void
+    {
+        $code = "<?= 1 + 41;";
+        $output = (new Obfuscator(new Options(seed: 1)))->obfuscate($code);
+        $this->assertSame('42', PhpRunner::run($output));
+    }
+
+    public function testOpenTagDetectionIgnoresTagsInsideStrings(): void
+    {
+        // Code with no leading open tag but with <?php inside a string literal.
+        // The obfuscator must detect the missing tag and prepend <?php for
+        // tokenisation, even though the string contains the <?php substring.
+        $code = 'echo "tag is <?php here";';
+        $output = (new Obfuscator(new Options(wrapWithEval: false, seed: 1)))->obfuscate($code);
+        $this->assertStringStartsNotWith('<?php', $output);
+        $this->assertSame('tag is <?php here', PhpRunner::run("<?php $output"));
+    }
+
+    public function testLeadingInlineHtmlWithEvalWrap(): void
+    {
+        $code = "Header<?php echo 'X';";
+        $output = (new Obfuscator(new Options(seed: 1)))->obfuscate($code);
+        $this->assertSame('HeaderX', PhpRunner::run($output));
     }
 
     public function testTraitMembersAreRenamedConsistently(): void

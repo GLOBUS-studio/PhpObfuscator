@@ -38,7 +38,7 @@ Options:
   --no-eval-wrap         Do not wrap output in eval(base64_decode(...))
   --no-strings           Skip string literal Base64 encoding
   --no-minify            Preserve original whitespace
-  --no-comments          Strip comments only (default removes them)
+  --no-comments          Keep comments (default strips them)
   --keep-variables       Do not rename variables
   --keep-functions       Do not rename functions
   --keep-classes         Do not rename classes

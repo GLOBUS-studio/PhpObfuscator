@@ -44,7 +44,6 @@ final class Options
     public static function fromArray(array $values): self
     {
         $defaults = get_class_vars(self::class);
-        unset($defaults['__construct']);
 
         $unknown = array_diff(array_keys($values), array_keys($defaults));
         if ($unknown !== []) {
