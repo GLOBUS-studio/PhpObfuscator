@@ -134,3 +134,18 @@ Parses flags → builds Options → calls Obfuscator. Input from file or STDIN (
 ## CI
 
 GitHub Actions, triggers on push/PR to `main`. PHP matrix 8.1–8.5 on `ubuntu-latest`. Installs tokenizer+mbstring+xdebug, `composer validate --strict`, `vendor/bin/phpunit --no-coverage`.
+
+## Working with GitHub
+
+`gh` isn't logged in on this machine. Pull the token from Credential Manager into
+`$env:GH_TOKEN` **and run `gh` in the same shell block** (the env var doesn't survive
+across invocations). Never echo or commit the token.
+
+```powershell
+$cred = "protocol=https`nhost=github.com`n" | git credential-manager get 2>$null
+$env:GH_TOKEN = (($cred | Where-Object { $_ -match '^password=' }) -replace '^password=', '')
+gh release create vX.Y.Z --title "vX.Y.Z" --notes-file notes.md
+```
+
+Release: `composer test` green → CHANGELOG entry committed → `git tag -a vX.Y.Z` →
+push `main` + tag → `gh release create` (notes via `--notes-file`).
