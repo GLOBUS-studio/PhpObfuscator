@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.2] - 2026-06-29
+
+### Changed
+- Reduced CI test matrix to PHP 8.3–8.5 (matching the `^8.3` requirement).
+
+### Fixed
+- Aligned documentation, badge, and inline docblocks to the `^8.3` minimum PHP requirement.
+
 ## [1.0.1] - 2026-06-29
 
 ### Changed
