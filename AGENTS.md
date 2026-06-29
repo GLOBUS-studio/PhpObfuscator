@@ -2,9 +2,9 @@
 
 ## Project overview
 
-`globus-studio/php-obfuscator` — a **token-based** PHP source code obfuscator that rewrites identifiers, encodes string literals, and minifies whitespace. Powered entirely by `PhpToken::tokenize()` — no regex-based parsing. The transformed code preserves original runtime semantics across PHP 8.1–8.5.
+`globus-studio/php-obfuscator` — a **token-based** PHP source code obfuscator that rewrites identifiers, encodes string literals, and minifies whitespace. Powered entirely by `PhpToken::tokenize()` — no regex-based parsing. The transformed code preserves original runtime semantics across PHP 8.3–8.5.
 
-**Zero production dependencies** beyond `php ^8.1` + `ext-tokenizer`. PHPUnit is the sole dev dependency.
+**Zero production dependencies** beyond `php ^8.3` + `ext-tokenizer` + `ext-mbstring`. PHPUnit is the sole dev dependency.
 
 ## Repository structure
 
@@ -25,7 +25,7 @@ tests/
   ExceptionTest.php
   Support/PhpRunner.php     Spawns child PHP process for runtime-output verification
 examples/demo.php           End-to-end usage demo
-.github/workflows/ci.yml    PHP 8.1–8.5 matrix, Ubuntu, phpunit
+.github/workflows/ci.yml    PHP 8.3–8.5 matrix, Ubuntu, phpunit
 ```
 
 ## Commands
@@ -124,7 +124,7 @@ Parses flags → builds Options → calls Obfuscator. Input from file or STDIN (
 ## Code conventions
 
 - `declare(strict_types=1)` in every file
-- PHP 8.1 minimum — uses named arguments, readonly properties, match, enums, nullsafe
+- PHP 8.3 minimum — uses named arguments, readonly properties, match, enums, nullsafe
 - Class layout: public API first, then private internal pipeline, then token helper methods
 - No docblocks on private methods unless behavior is non-obvious
 - Use `self::` for class constants within the same class
@@ -133,7 +133,7 @@ Parses flags → builds Options → calls Obfuscator. Input from file or STDIN (
 
 ## CI
 
-GitHub Actions, triggers on push/PR to `main`. PHP matrix 8.1–8.5 on `ubuntu-latest`. Installs tokenizer+mbstring+xdebug, `composer validate --strict`, `vendor/bin/phpunit --no-coverage`.
+GitHub Actions, triggers on push/PR to `main`. PHP matrix 8.3–8.5 on `ubuntu-latest`. Installs tokenizer+mbstring+xdebug, `composer validate --strict`, `vendor/bin/phpunit --no-coverage`.
 
 ## Working with GitHub
 

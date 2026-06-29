@@ -1,6 +1,6 @@
 {
     "name": "globus-studio/php-obfuscator",
-    "description": "A token-based PHP source code obfuscator with full support for PHP 8.1 through 8.5.",
+    "description": "A token-based PHP source code obfuscator with full support for PHP 8.3 through 8.5.",
     "type": "library",
     "keywords": ["obfuscator", "obfuscate", "php", "source-code", "protection", "minify", "tokenizer"],
     "license": "MIT",

@@ -86,7 +86,7 @@ final class NameGenerator
      * Without a seed the method delegates to `random_int()`, which is
      * cryptographically secure. With a seed it advances a linear
      * congruential generator so that the output is reproducible across
-     * PHP 8.1 - 8.5 (minor modulo bias may occur on the last bucket).
+     * PHP 8.3 - 8.5 (minor modulo bias may occur on the last bucket).
      */
     private function nextInt(int $min, int $max): int
     {

@@ -14,7 +14,7 @@ use PhpToken;
  * identifiers it has previously seen declared in the input. Built-in
  * functions, classes, traits and superglobals are therefore guaranteed to be
  * left untouched, which keeps the obfuscated payload runnable on every
- * supported PHP version (8.1 - 8.5).
+ * supported PHP version (8.3 - 8.5).
  */
 final class Obfuscator
 {

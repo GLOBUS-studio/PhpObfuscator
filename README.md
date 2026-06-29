@@ -3,7 +3,7 @@
 [![CI](https://github.com/GLOBUS-studio/PhpObfuscator/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/GLOBUS-studio/PhpObfuscator/actions/workflows/ci.yml)
 [![Latest Release](https://img.shields.io/github/v/release/GLOBUS-studio/PhpObfuscator?include_prereleases&sort=semver)](https://github.com/GLOBUS-studio/PhpObfuscator/releases)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![Tested on PHP 8.1 - 8.5](https://img.shields.io/badge/PHP-8.1%20%7C%208.2%20%7C%208.3%20%7C%208.4%20%7C%208.5-777BB4?logo=php&logoColor=white)](.github/workflows/ci.yml)
+[![Tested on PHP 8.3 - 8.5](https://img.shields.io/badge/PHP-8.3%20%7C%208.4%20%7C%208.5-777BB4?logo=php&logoColor=white)](.github/workflows/ci.yml)
 [![PHPUnit](https://img.shields.io/badge/tested%20with-PHPUnit-brightgreen.svg)](https://phpunit.de/)
 
 A token-based PHP source code obfuscator. Renames identifiers, encodes string
@@ -11,7 +11,7 @@ literals and minifies whitespace, all driven by PHP's own tokenizer rather than
 brittle regular expressions, so the transformed code keeps its original
 runtime semantics on every supported PHP version.
 
-The obfuscator is fully tested on PHP 8.1, 8.2, 8.3, 8.4 and 8.5 in CI.
+The obfuscator is fully tested on PHP 8.3, 8.4 and 8.5 in CI.
 
 ## Why another obfuscator?
 
@@ -203,7 +203,7 @@ composer install
 vendor/bin/phpunit
 ```
 
-The bundled CI workflow runs the test suite on Ubuntu against PHP 8.1 - 8.5.
+The bundled CI workflow runs the test suite on Ubuntu against PHP 8.3 - 8.5.
 
 ## License
 
